@@ -70,8 +70,8 @@ configs: dict[str, ModelConfig] = {
     "PointNet": ModelConfig(
         sampling="uniform",
         lr=0.001,
-        epochs=250,
-        patience=20,
+        epochs=50,
+        patience=10,
         early_stop_metric="accuracy",
         scheduler_factory=lambda opt, _: StepLR(opt, step_size=80, gamma=0.9956),
     ),
@@ -90,8 +90,8 @@ configs: dict[str, ModelConfig] = {
     "PointNetPP": ModelConfig(
         sampling="fps",
         lr=0.001,
-        epochs=250,
-        patience=25,
+        epochs=50,
+        patience=10,
         early_stop_metric="accuracy",
         optimizer_factory=lambda params, lr: torch.optim.Adam(
             params, lr=lr, weight_decay=1e-4
@@ -104,16 +104,15 @@ configs: dict[str, ModelConfig] = {
     # Paper config: AdamW, lr=0.001, cosine annealing, weight
     # decay=0.05, 200 epochs, batch 32, 1024 points.
     # AdamW + cosine annealing is standard for transformer models.
-    # Early stopping disabled: cosine annealing is a full-cycle
-    # schedule; stopping mid-cycle undermines its convergence
-    # guarantee.  Let it run the full 200 epochs.
+    # Cosine annealing is a full-cycle schedule; stopping mid-cycle
+    # undermines its convergence guarantee.
     # Reference: https://arxiv.org/abs/2012.09164
     # --------------------------------------------------------------
     "PointTransformer": ModelConfig(
         sampling="fps",
         lr=0.001,
-        epochs=200,
-        patience=200,           # effectively disabled — full cosine cycle
+        epochs=50,
+        patience=10,
         early_stop_metric="accuracy",
         optimizer_factory=lambda params, lr: torch.optim.AdamW(
             params, lr=lr, weight_decay=0.05
@@ -134,8 +133,8 @@ configs: dict[str, ModelConfig] = {
     "DGCNN": ModelConfig(
         sampling="uniform",
         lr=0.001,
-        epochs=200,
-        patience=40,            # 2 × step_size=20, ensures post-decay recovery window
+        epochs=50,
+        patience=10,
         early_stop_metric="accuracy",
         scheduler_factory=lambda opt, _: StepLR(opt, step_size=20, gamma=0.5),
     ),
@@ -158,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         choices=["modelnet10", "modelnet40"],
-        default="modelnet10",
+        default="modelnet40",
         help="Dataset to train on (default: modelnet10).",
     )
     args = parser.parse_args()

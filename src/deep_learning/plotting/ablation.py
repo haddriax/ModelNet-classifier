@@ -41,6 +41,8 @@ def create_ablation_plots(results_path: Path, output_dir: Path | None = None) ->
     plot_model_heatmap(runs, output_dir, plt)
     plot_training_efficiency_per_model(runs, output_dir, plt)
     plot_training_efficiency_per_npoints(runs, output_dir, plt)
+    plot_loss_curves(runs, output_dir, plt)
+    plot_accuracy_curves(runs, output_dir, plt)
 
     print(f"Plots saved to: {output_dir}")
 
@@ -380,3 +382,155 @@ def plot_model_heatmap(runs: list[dict], output_dir: Path, plt) -> None:
     plt.tight_layout()
     plt.savefig(output_dir / 'model_heatmap.png', dpi=150)
     plt.close()
+
+
+# Colour palette for sampling methods, shared by the two curve functions below.
+_SAMPLING_COLORS: dict[str, str] = {
+    "uniform": "#3498db",
+    "fps":     "#e74c3c",
+    "poisson": "#2ecc71",
+}
+
+
+def plot_loss_curves(runs: list[dict], output_dir: Path, plt) -> None:
+    """Per-epoch train/test loss curves for the ablation study.
+
+    Produces one PNG per model (``ablation_loss_curves_{ModelName}.png``).
+    Within each figure every configuration (sampling × n_points × batch_size)
+    is drawn as a pair of lines: train loss (solid) and test loss (dashed),
+    coloured by sampling method.
+
+    Skips runs that lack ``train_loss_history`` (backward-compatible with
+    JSON produced before this field was introduced).
+
+    Args:
+        runs: List of completed run result dicts.
+        output_dir: Directory to save the plots.
+        plt: The matplotlib.pyplot module (passed by caller).
+    """
+    models = sorted(set(r["config"]["model"] for r in runs))
+
+    for model_name in models:
+        model_runs = sorted(
+            [
+                r for r in runs
+                if r["config"]["model"] == model_name
+                and r["metrics"].get("train_loss_history")
+            ],
+            key=lambda r: (
+                r["config"]["n_points"],
+                r["config"]["sampling_method"],
+                r["config"]["batch_size"],
+            ),
+        )
+        if not model_runs:
+            continue
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+
+        for run in model_runs:
+            sampling = run["config"]["sampling_method"]
+            color = _SAMPLING_COLORS.get(sampling, "#999999")
+            label_suffix = (
+                f"{sampling}_{run['config']['n_points']}pts"
+                f"_bs{run['config']['batch_size']}"
+            )
+            epochs = list(range(1, len(run["metrics"]["train_loss_history"]) + 1))
+
+            ax.plot(
+                epochs, run["metrics"]["train_loss_history"],
+                color=color, linestyle="-", linewidth=1.5,
+                label=f"{label_suffix} train",
+            )
+            ax.plot(
+                epochs, run["metrics"]["test_loss_history"],
+                color=color, linestyle="--", linewidth=1.5, alpha=0.8,
+                label=f"{label_suffix} test",
+            )
+
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.set_title(f"Loss Curves — {model_name}")
+        ax.legend(fontsize=7, ncol=2)
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(output_dir / f"ablation_loss_curves_{model_name}.png", dpi=150)
+        plt.close()
+
+
+def plot_accuracy_curves(runs: list[dict], output_dir: Path, plt) -> None:
+    """Per-epoch train/test accuracy curves for the ablation study.
+
+    Produces one PNG per model (``ablation_accuracy_curves_{ModelName}.png``).
+    Within each figure every configuration is drawn as a pair of lines (solid
+    train, dashed test) coloured by sampling method. The epoch achieving the
+    best test accuracy is marked with a ★ scatter point per configuration.
+
+    Skips runs that lack ``train_acc_history`` (backward-compatible).
+
+    Args:
+        runs: List of completed run result dicts.
+        output_dir: Directory to save the plots.
+        plt: The matplotlib.pyplot module (passed by caller).
+    """
+    models = sorted(set(r["config"]["model"] for r in runs))
+
+    for model_name in models:
+        model_runs = sorted(
+            [
+                r for r in runs
+                if r["config"]["model"] == model_name
+                and r["metrics"].get("train_acc_history")
+            ],
+            key=lambda r: (
+                r["config"]["n_points"],
+                r["config"]["sampling_method"],
+                r["config"]["batch_size"],
+            ),
+        )
+        if not model_runs:
+            continue
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+
+        for run in model_runs:
+            sampling = run["config"]["sampling_method"]
+            color = _SAMPLING_COLORS.get(sampling, "#999999")
+            label_suffix = (
+                f"{sampling}_{run['config']['n_points']}pts"
+                f"_bs{run['config']['batch_size']}"
+            )
+
+            train_acc = [v * 100 for v in run["metrics"]["train_acc_history"]]
+            test_acc  = [v * 100 for v in run["metrics"]["test_acc_history"]]
+            epochs    = list(range(1, len(train_acc) + 1))
+
+            ax.plot(
+                epochs, train_acc,
+                color=color, linestyle="-", linewidth=1.5,
+                label=f"{label_suffix} train",
+            )
+            ax.plot(
+                epochs, test_acc,
+                color=color, linestyle="--", linewidth=1.5, alpha=0.8,
+                label=f"{label_suffix} test",
+            )
+
+            # Mark the best test-accuracy epoch
+            best_idx = max(range(len(test_acc)), key=lambda i: test_acc[i])
+            ax.scatter(
+                [epochs[best_idx]], [test_acc[best_idx]],
+                marker="*", s=150, color=color, zorder=5,
+            )
+
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Accuracy (%)")
+        ax.set_ylim(0, 105)
+        ax.set_title(f"Accuracy Curves — {model_name}")
+        ax.legend(fontsize=7, ncol=2)
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(output_dir / f"ablation_accuracy_curves_{model_name}.png", dpi=150)
+        plt.close()

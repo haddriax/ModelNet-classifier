@@ -64,9 +64,9 @@ if __name__ == "__main__":
             ALL_MODELS['DGCNN'],
         ],
         sampling_methods=[Sampling.FARTHEST_POINT],
-        n_points_list=[128, 512, 2048, 4096],
+        n_points_list=[256, 512, 1024],
         batch_sizes=[32],
-        epochs=50,
+        epochs=20,
     )
 
     search = GridSearch(

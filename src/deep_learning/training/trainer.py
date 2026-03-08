@@ -31,6 +31,10 @@ class TrainingResults(TypedDict):
     best_model_path: str
     total_training_time_seconds: float
     epochs_trained: int
+    train_loss_history: list[float]
+    test_loss_history: list[float]
+    train_acc_history: list[float]
+    test_acc_history: list[float]
 
 
 class ModelTrainer:
@@ -359,6 +363,11 @@ class ModelTrainer:
         final_test_metrics: dict = {}
         epochs_actually_trained = 0
 
+        train_loss_history: list[float] = []
+        test_loss_history: list[float] = []
+        train_acc_history: list[float] = []
+        test_acc_history: list[float] = []
+
         for epoch in range(start_epoch, epochs):
             train_loss, train_acc = self.train_epoch(epoch)
             test_metrics = self.test(epoch)
@@ -368,6 +377,12 @@ class ModelTrainer:
             # Track final epoch values
             final_train_loss, final_train_acc = train_loss, train_acc
             final_test_metrics = test_metrics
+
+            # Accumulate per-epoch history for curve plots
+            train_loss_history.append(train_loss)
+            train_acc_history.append(train_acc)
+            test_loss_history.append(test_metrics["loss"])
+            test_acc_history.append(test_metrics["accuracy"])
 
             test_loss = test_metrics["loss"]
             test_acc = test_metrics["accuracy"]
@@ -436,6 +451,10 @@ class ModelTrainer:
             best_model_path=str(best_model_path),
             total_training_time_seconds=total_time,
             epochs_trained=epochs_actually_trained,
+            train_loss_history=train_loss_history,
+            test_loss_history=test_loss_history,
+            train_acc_history=train_acc_history,
+            test_acc_history=test_acc_history,
         )
 
         # Final save

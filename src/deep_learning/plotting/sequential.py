@@ -13,7 +13,7 @@ from ._utils import _get_model_colors
 def plot_sequential_results(results_path: Path, output_dir: Path | None = None) -> None:
     """Generate tailored plots for a sequential training experiment.
 
-    Produces four figures suited to the one-run-per-model structure:
+    Produces six figures suited to the one-run-per-model structure:
 
     * ``sequential_model_comparison.png`` — grouped bar chart of accuracy,
       F1, precision and recall for each model.
@@ -21,6 +21,8 @@ def plot_sequential_results(results_path: Path, output_dir: Path | None = None) 
       (models × classes).
     * ``sequential_per_class_f1.png`` — same heatmap for per-class F1.
     * ``sequential_training_efficiency.png`` — dual-axis epochs/time chart.
+    * ``sequential_loss_curves.png`` — per-epoch train/test loss per model.
+    * ``sequential_accuracy_curves.png`` — per-epoch train/test accuracy per model.
 
     Args:
         results_path: Path to ``sequential_results.json``.
@@ -52,6 +54,8 @@ def plot_sequential_results(results_path: Path, output_dir: Path | None = None) 
                            filename="sequential_per_class_f1.png",
                            colorbar_label="Class F1 (%)")
     plot_training_efficiency(runs, output_dir, plt)
+    plot_loss_curves(runs, output_dir, plt)
+    plot_accuracy_curves(runs, output_dir, plt)
 
     print(f"Plots saved to: {output_dir}")
 
@@ -243,4 +247,127 @@ def plot_training_efficiency(
     ax1.grid(axis="y", alpha=0.3)
     plt.tight_layout()
     plt.savefig(output_dir / filename, dpi=150)
+    plt.close()
+
+
+def plot_loss_curves(runs: list[dict], output_dir: Path, plt) -> None:
+    """Grid of per-epoch train/test loss curves, one subplot per model.
+
+    Skips any run whose ``metrics`` dict lacks ``train_loss_history``
+    (backward-compatible with JSON produced before this field was added).
+
+    Args:
+        runs: List of completed run result dicts.
+        output_dir: Directory to save the plot.
+        plt: The matplotlib.pyplot module (passed by caller).
+    """
+    import math
+
+    model_colors = _get_model_colors()
+
+    # Filter to runs that actually contain history data
+    curve_runs = [
+        r for r in runs
+        if r["metrics"].get("train_loss_history")
+    ]
+    if not curve_runs:
+        print("  [skip] plot_loss_curves — no history data in completed runs.")
+        return
+
+    n = len(curve_runs)
+    ncols = min(3, n)
+    nrows = math.ceil(n / ncols)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 5, nrows * 3.5), squeeze=False)
+
+    for idx, run in enumerate(curve_runs):
+        ax = axes[idx // ncols][idx % ncols]
+        model_name = run["config"]["model"]
+        color = model_colors.get(model_name, "#555555")
+
+        train_loss = run["metrics"]["train_loss_history"]
+        test_loss  = run["metrics"]["test_loss_history"]
+        epochs     = list(range(1, len(train_loss) + 1))
+
+        ax.plot(epochs, train_loss, color=color, linestyle="-",  linewidth=1.8, label="Train")
+        ax.plot(epochs, test_loss,  color=color, linestyle="--", linewidth=1.8, label="Test", alpha=0.8)
+
+        ax.set_title(model_name, fontsize=10, fontweight="bold")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+
+    # Hide unused subplot slots
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    fig.suptitle("Training & Test Loss Curves", fontsize=13, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(output_dir / "sequential_loss_curves.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+
+def plot_accuracy_curves(runs: list[dict], output_dir: Path, plt) -> None:
+    """Grid of per-epoch train/test accuracy curves, one subplot per model.
+
+    The best test-accuracy epoch is highlighted with a ★ marker.
+    Skips runs without ``train_acc_history`` (backward-compatible).
+
+    Args:
+        runs: List of completed run result dicts.
+        output_dir: Directory to save the plot.
+        plt: The matplotlib.pyplot module (passed by caller).
+    """
+    import math
+
+    model_colors = _get_model_colors()
+
+    curve_runs = [
+        r for r in runs
+        if r["metrics"].get("train_acc_history")
+    ]
+    if not curve_runs:
+        print("  [skip] plot_accuracy_curves — no history data in completed runs.")
+        return
+
+    n = len(curve_runs)
+    ncols = min(3, n)
+    nrows = math.ceil(n / ncols)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 5, nrows * 3.5), squeeze=False)
+
+    for idx, run in enumerate(curve_runs):
+        ax = axes[idx // ncols][idx % ncols]
+        model_name = run["config"]["model"]
+        color = model_colors.get(model_name, "#555555")
+
+        train_acc = [v * 100 for v in run["metrics"]["train_acc_history"]]
+        test_acc  = [v * 100 for v in run["metrics"]["test_acc_history"]]
+        epochs    = list(range(1, len(train_acc) + 1))
+
+        ax.plot(epochs, train_acc, color=color, linestyle="-",  linewidth=1.8, label="Train")
+        ax.plot(epochs, test_acc,  color=color, linestyle="--", linewidth=1.8, label="Test", alpha=0.8)
+
+        # Mark the epoch with the best test accuracy
+        best_epoch_idx = max(range(len(test_acc)), key=lambda i: test_acc[i])
+        ax.scatter(
+            [epochs[best_epoch_idx]], [test_acc[best_epoch_idx]],
+            marker="*", s=180, color=color, zorder=5,
+            label=f"Best {test_acc[best_epoch_idx]:.1f}%",
+        )
+
+        ax.set_title(model_name, fontsize=10, fontweight="bold")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Accuracy (%)")
+        ax.set_ylim(0, 105)
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    fig.suptitle("Training & Test Accuracy Curves", fontsize=13, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(output_dir / "sequential_accuracy_curves.png", dpi=150, bbox_inches="tight")
     plt.close()
