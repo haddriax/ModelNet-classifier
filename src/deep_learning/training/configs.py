@@ -1,11 +1,11 @@
 """Configuration dataclasses for sequential training.
 
 Provides :class:`ModelConfig` — a typed, self-validating per-model
-configuration used by :func:`src.deep_learning.sequential_trainer.run_sequential`.
+configuration used by :func:`src.deep_learning.training.sequential.run_sequential`.
 
 Example::
 
-    from src.deep_learning.configs import ModelConfig
+    from src.deep_learning.training import ModelConfig
     from torch.optim.lr_scheduler import StepLR
 
     configs = {
@@ -68,8 +68,8 @@ class ModelConfig:
     """Per-model configuration for the sequential trainer.
 
     All optional fields default to ``None``, which means "use the global
-    value passed to :func:`~src.deep_learning.sequential_trainer.run_sequential`"
-    (or the :class:`~src.deep_learning.model_trainer.ModelTrainer` default
+    value passed to :func:`~src.deep_learning.training.sequential.run_sequential`"
+    (or the :class:`~src.deep_learning.training.trainer.ModelTrainer` default
     for factory fields).
 
     Args:
@@ -85,10 +85,10 @@ class ModelConfig:
                            ``"f1"`` (macro F1, higher is better), or
                            ``"loss"`` (lower is better).
                            ``None`` → use the global value from
-                           :func:`~src.deep_learning.sequential_trainer.run_sequential`.
+                           :func:`~src.deep_learning.training.sequential.run_sequential`.
         epochs: Maximum number of training epochs for this model.
                 ``None`` → use the global value from
-                :func:`~src.deep_learning.sequential_trainer.run_sequential`.
+                :func:`~src.deep_learning.training.sequential.run_sequential`.
         optimizer_factory: Callable ``(parameters, lr) -> Optimizer``.
                            ``None`` → :class:`torch.optim.Adam` with the
                            resolved learning rate.  See :data:`OptimizerFactory`.

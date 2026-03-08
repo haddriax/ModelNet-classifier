@@ -1,11 +1,11 @@
 """Shared dataset factory for ModelNet10 point-cloud training pipelines.
 
-Both the sequential trainer (:mod:`src.deep_learning.sequential_trainer`)
-and the grid-search entry point (:mod:`src.train_classifier`) use
+Both the sequential trainer (:mod:`src.deep_learning.training.sequential`)
+and the grid-search entry point (:mod:`scripts.grid_training`) use
 :func:`make_datasets` to produce train/test dataset pairs.
 
 The :data:`DatasetFactory` type alias is the expected signature for any
-callable passed to :class:`~src.deep_learning.grid_search.GridSearch`.
+callable passed to :class:`~src.deep_learning.training.grid_search.GridSearch`.
 """
 
 from __future__ import annotations
@@ -22,6 +22,13 @@ from src.geometry import Sampling
 # Type alias: factory that creates (train_dataset, test_dataset) for given params.
 # Matches the signature used by GridSearch and run_sequential.
 DatasetFactory = Callable[[int, Sampling], tuple[Dataset, Dataset]]
+
+# Shared sampling-string → Sampling-enum mapping used by training and inference.
+SAMPLING_MAP: dict[str, Sampling] = {
+    "uniform": Sampling.UNIFORM,
+    "fps": Sampling.FARTHEST_POINT,
+    "poisson": Sampling.POISSON,
+}
 
 
 def make_datasets(
@@ -46,7 +53,7 @@ def make_datasets(
 
     Returns:
         ``(train_dataset, test_dataset)`` tuple ready for use with
-        :class:`~src.deep_learning.model_trainer.ModelTrainer`.
+        :class:`~src.deep_learning.training.trainer.ModelTrainer`.
     """
     train_ds = PointCloudDataset(
         root_dir=data_dir,

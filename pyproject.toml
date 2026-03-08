@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "open3d",
     "numpy",
+    "setuptools<81.0.0",
     "tensorboard",
     "tqdm",
     "torch==2.6.0+cu126",

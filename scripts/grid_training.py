@@ -19,7 +19,7 @@ Usage::
 from functools import partial
 
 from src.deep_learning.dataset_factory import make_datasets
-from src.deep_learning.grid_search import GridSearch, GridSearchConfig
+from src.deep_learning.training import GridSearch, GridSearchConfig
 from src.deep_learning.models import ALL_MODELS
 from src.deep_learning.plotting import create_ablation_plots
 from src.geometry import Sampling
@@ -60,9 +60,11 @@ if __name__ == "__main__":
         model_classes=[
             ALL_MODELS['PointNet'],
             ALL_MODELS['PointNetPP'],
+            ALL_MODELS['PointTransformer'],
+            ALL_MODELS['DGCNN'],
         ],
-        sampling_methods=[Sampling.UNIFORM, Sampling.FARTHEST_POINT],
-        n_points_list=[2048],
+        sampling_methods=[Sampling.FARTHEST_POINT],
+        n_points_list=[128, 512, 2048, 4096],
         batch_sizes=[32],
         epochs=50,
     )

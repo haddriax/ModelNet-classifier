@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from datetime import datetime
 
-from src.deep_learning.configs import OptimizerFactory, SchedulerFactory
+from .configs import OptimizerFactory, SchedulerFactory
 
 
 class TrainingResults(TypedDict):
@@ -65,11 +65,11 @@ class ModelTrainer:
                                better), or ``"loss"`` (lower is better).
             optimizer_factory: Callable ``(parameters, lr) -> Optimizer``.
                                ``None`` → :class:`torch.optim.Adam`.
-                               See :data:`~src.deep_learning.configs.OptimizerFactory`.
+                               See :data:`~src.deep_learning.training.configs.OptimizerFactory`.
             scheduler_factory: Callable ``(optimizer, epochs_remaining) -> LRScheduler``.
                                ``None`` → :class:`~torch.optim.lr_scheduler.CosineAnnealingLR`
                                with ``T_max=epochs_remaining`` and ``eta_min=1e-5``.
-                               See :data:`~src.deep_learning.configs.SchedulerFactory`.
+                               See :data:`~src.deep_learning.training.configs.SchedulerFactory`.
 
         Raises:
             ValueError: If ``early_stop_metric`` is not ``"accuracy"``, ``"f1"``,

@@ -25,7 +25,7 @@ uv sync
 # Interactive 3D mesh viewer  (N / Right = next mesh, P / Left = previous)
 python -m scripts.main
 
-# Train all models sequentially on ModelNet10 (default) or ModelNet40
+# Train all ai_models sequentially on ModelNet10 (default) or ModelNet40
 python -m scripts.sequential_training --dataset modelnet10
 python -m scripts.sequential_training --dataset modelnet40
 

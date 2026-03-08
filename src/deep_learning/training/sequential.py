@@ -5,13 +5,12 @@ rather than a full Cartesian grid search. One run per model, sequential executio
 
 Typical usage
 -------------
-Define a ``configs`` dict mapping model name → :class:`~src.deep_learning.configs.ModelConfig`,
+Define a ``configs`` dict mapping model name → :class:`~src.deep_learning.training.configs.ModelConfig`,
 then call :func:`run_sequential`.  The only mandatory per-model field is ``sampling``.
 
 Example::
 
-    from src.deep_learning.configs import ModelConfig
-    from src.deep_learning.sequential_trainer import run_sequential
+    from src.deep_learning.training import ModelConfig, run_sequential
 
     configs = {
         "PointNet":         ModelConfig(sampling="uniform"),
@@ -21,32 +20,19 @@ Example::
         "PointTransformer": ModelConfig(sampling="fps"),
     }
     run_sequential(configs, n_points=1024, batch_size=32, epochs=50)
-
-Entry point:
-    python -m src.sequential_trainer   (canonical runner — edit configs there)
 """
 
 from datetime import datetime
 from pathlib import Path
 
 from src.config import DATA_DIR, MODELS_DIR, RESULTS_DIR
-from src.deep_learning.configs import ModelConfig, OptimizerFactory, SchedulerFactory
-from src.deep_learning.dataset_factory import make_datasets
-from src.deep_learning.model_trainer import ModelTrainer
+from src.deep_learning.dataset_factory import make_datasets, SAMPLING_MAP
 from src.deep_learning.models import ALL_MODELS
 from src.deep_learning.plotting import plot_sequential_results
 from src.deep_learning.result_utils import find_best_run, save_json
 from src.geometry import Sampling
-
-# ---------------------------------------------------------------------------
-# Sampling string → enum
-# ---------------------------------------------------------------------------
-
-SAMPLING_MAP: dict[str, Sampling] = {
-    "uniform": Sampling.UNIFORM,
-    "fps": Sampling.FARTHEST_POINT,
-    "poisson": Sampling.POISSON,
-}
+from .configs import ModelConfig, OptimizerFactory, SchedulerFactory
+from .trainer import ModelTrainer
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +227,7 @@ def run_sequential(
     """Train each model in *configs* sequentially with its own sampling method.
 
     Args:
-        configs: Mapping of model name → :class:`~src.deep_learning.configs.ModelConfig`.
+        configs: Mapping of model name → :class:`~src.deep_learning.training.configs.ModelConfig`.
                  Each :class:`ModelConfig` specifies the required ``sampling``
                  method and optional per-model overrides for ``lr``,
                  ``patience``, ``early_stop_metric``, and ``epochs``.
@@ -271,7 +257,7 @@ def run_sequential(
         KeyError: If any model name in *configs* is not found in
                   :data:`~src.deep_learning.models.ALL_MODELS`.
         TypeError: If any value in *configs* is not a
-                   :class:`~src.deep_learning.configs.ModelConfig` instance.
+                   :class:`~src.deep_learning.training.configs.ModelConfig` instance.
     """
     _validate(configs)
 

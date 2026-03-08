@@ -12,18 +12,9 @@ import torch
 import torch.nn.functional as F
 
 from src.config import DATA_DIR, MODELNET40_DIR
+from src.deep_learning.dataset_factory import SAMPLING_MAP
 from src.deep_learning.models import ALL_MODELS
 from src.geometry import Sampling
-
-# ---------------------------------------------------------------------------
-# Checkpoint parsing constants
-# ---------------------------------------------------------------------------
-
-SAMPLING_MAP: dict[str, Sampling] = {
-    "uniform": Sampling.UNIFORM,
-    "fps": Sampling.FARTHEST_POINT,
-    "poisson": Sampling.POISSON,
-}
 
 # Matches: {ModelName}_{sampling}_pts{N}_bs{B}[_best].pth
 _CKPT_PATTERN = re.compile(

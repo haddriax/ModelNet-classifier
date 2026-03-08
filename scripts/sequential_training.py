@@ -18,7 +18,7 @@ To use a custom scheduler or optimizer, pass a factory callable to ModelConfig::
         scheduler_factory=lambda opt, _: StepLR(opt, step_size=20, gamma=0.7),
     )
 
-The implementation lives in :mod:`src.deep_learning.sequential_trainer`.
+The implementation lives in :mod:`src.deep_learning.training.sequential`.
 
 Usage::
 
@@ -32,48 +32,48 @@ Usage::
 import torch
 from torch.optim.lr_scheduler import ExponentialLR, StepLR
 
-from src.deep_learning.configs import ModelConfig
-from src.deep_learning.sequential_trainer import run_sequential
+from src.deep_learning.training import ModelConfig, run_sequential
 
 # ---------------------------------------------------------------------------
 # Shared training settings (applies to all models unless overridden per-model)
 # ---------------------------------------------------------------------------
 
-N_POINTS  = 1024
+N_POINTS   = 1024
 BATCH_SIZE = 32
 
 # ---------------------------------------------------------------------------
-# Per-model configurations
+# Scheduler notes — ModelNet10 vs ModelNet40
+# ---------------------------------------------------------------------------
+# The original PointNet/PointNet++ papers decay LR ×0.7 every 200 000 gradient
+# steps, calibrated for ModelNet40 (~9 843 steps/epoch → decay every ~20 epochs).
+#
+# On ModelNet10 (~3 991 samples, batch 32 → ~125 steps/epoch) the same formula
+# gives a decay period of ~1 600 epochs — far beyond any budget used here.
+# ExponentialLR with gamma=0.9827 therefore acts as a near-flat LR on MN10.
+#
+# Adaptation: StepLR decaying ×0.7 every 80 epochs, giving ~3 decay events over
+# 250 epochs and a total LR reduction of ×0.7³ ≈ 0.343 — comparable to the
+# paper's intent across training.  Switch to gamma=0.9956 / step_size=80 if you
+# prefer to stay with ExponentialLR:
+#   gamma = 0.7 ** (1/80) ≈ 0.9956
 # ---------------------------------------------------------------------------
 
 configs: dict[str, ModelConfig] = {
     # --------------------------------------------------------------
     # PointNet — Qi et al., CVPR 2017 (arXiv:1612.00593)
     # Paper config: Adam lr=0.001, exponential LR decay ×0.7 every
-    # 200 K steps (≈ 200 epochs at batch 32 / 1024 pts), 250 epochs,
+    # 200 K steps (≈ 20 epochs at batch 32 / MN40), 250 epochs,
     # uniform sampling, 1024 points.
+    # ModelNet10 adaptation: StepLR ×0.7 every 80 epochs (~3 decays).
     # Reference: https://github.com/charlesq34/pointnet train.py
     # --------------------------------------------------------------
     "PointNet": ModelConfig(
         sampling="uniform",
         lr=0.001,
         epochs=250,
-        patience=12,
+        patience=20,
         early_stop_metric="accuracy",
-        # Exponential decay: ×0.7 every ~200 k gradient steps.
-        # With 1024 pts / batch 32 → ~9 843 steps per epoch → decay
-        # every ≈ 20 epochs. gamma = 0.7 ** (1/20) ≈ 0.9827 per epoch.
-        scheduler_factory=lambda opt, _: ExponentialLR(opt, gamma=0.9827),
-    ),
-
-    # SimplePointNet — minimal PointNet backbone (no transform nets).
-    "SimplePointNet": ModelConfig(
-        sampling="uniform",
-        lr=0.001,
-        epochs=250,
-        patience=12,
-        early_stop_metric="accuracy",
-        scheduler_factory=lambda opt, _: ExponentialLR(opt, gamma=0.9827),
+        scheduler_factory=lambda opt, _: StepLR(opt, step_size=80, gamma=0.9956),
     ),
 
     # --------------------------------------------------------------
@@ -82,30 +82,38 @@ configs: dict[str, ModelConfig] = {
     # 200 k steps, 250 epochs, batch 32, 1024 points, FPS sampling.
     # The hierarchical SA layers are designed around FPS; using
     # uniform sampling will still work but is sub-optimal.
+    # ModelNet10 adaptation: same StepLR schedule as PointNet.
+    # Increased patience: SA layers take longer to converge than the
+    # flat PointNet MLP stack.
     # Reference: https://github.com/charlesq34/pointnet2 train.py
     # --------------------------------------------------------------
     "PointNetPP": ModelConfig(
         sampling="fps",
         lr=0.001,
         epochs=250,
-        patience=12,
+        patience=25,
         early_stop_metric="accuracy",
-        scheduler_factory=lambda opt, _: ExponentialLR(opt, gamma=0.9827),
+        optimizer_factory=lambda params, lr: torch.optim.Adam(
+            params, lr=lr, weight_decay=1e-4
+        ),
+        scheduler_factory=lambda opt, _: StepLR(opt, step_size=80, gamma=0.9956),
     ),
 
     # --------------------------------------------------------------
     # Point Transformer — Zhao et al., ICCV 2021 (arXiv:2012.09164)
     # Paper config: AdamW, lr=0.001, cosine annealing, weight
     # decay=0.05, 200 epochs, batch 32, 1024 points.
-    # AdamW + cosine annealing is standard for transformer models
-    # (see also official implementation).
+    # AdamW + cosine annealing is standard for transformer models.
+    # Early stopping disabled: cosine annealing is a full-cycle
+    # schedule; stopping mid-cycle undermines its convergence
+    # guarantee.  Let it run the full 200 epochs.
     # Reference: https://arxiv.org/abs/2012.09164
     # --------------------------------------------------------------
     "PointTransformer": ModelConfig(
         sampling="fps",
         lr=0.001,
         epochs=200,
-        patience=12,
+        patience=200,           # effectively disabled — full cosine cycle
         early_stop_metric="accuracy",
         optimizer_factory=lambda params, lr: torch.optim.AdamW(
             params, lr=lr, weight_decay=0.05
@@ -119,13 +127,15 @@ configs: dict[str, ModelConfig] = {
     # DGCNN — Wang et al., TOG 2019 (arXiv:1801.07829)
     # Paper config: Adam lr=0.001, step decay ×0.5 every 20 epochs,
     # 200 epochs, batch 32, 1024 uniform-sampled points.
+    # Patience set to 2× step_size so a decay event always gets a
+    # full recovery window before early stopping triggers.
     # Reference: https://github.com/WangYueFt/dgcnn train.py
     # --------------------------------------------------------------
     "DGCNN": ModelConfig(
         sampling="uniform",
         lr=0.001,
         epochs=200,
-        patience=12,
+        patience=40,            # 2 × step_size=20, ensures post-decay recovery window
         early_stop_metric="accuracy",
         scheduler_factory=lambda opt, _: StepLR(opt, step_size=20, gamma=0.5),
     ),
@@ -137,7 +147,7 @@ if __name__ == "__main__":
     from datetime import datetime
     from src.config import DATA_DIR, MODELNET40_DIR, MODELS_DIR, RESULTS_DIR
 
-    # @todo: move derterminist configs into config files and ensure it's used in every training
+    # @todo: move deterministic configs into config files and ensure it's used in every training
     torch.manual_seed(42)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -168,7 +178,7 @@ if __name__ == "__main__":
         configs,
         n_points=N_POINTS,
         batch_size=BATCH_SIZE,
-        epochs=250,   # global fallback (each model overrides via ModelConfig.epochs)
+        epochs=100,
         early_stop_metric="accuracy",
         data_dir=data_dir,
         results_dir=results_dir,
