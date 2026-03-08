@@ -19,21 +19,17 @@ def load_camera_params(json_path):
             [ 0,  0,   1]
         ], dtype=np.float64)
 
-        # Utilise position directement depuis Unity
-        pos = np.array(cam["position"], dtype=np.float64)  # centre caméra dans repère monde
+        pos = np.array(cam["position"], dtype=np.float64)
 
-        # Dans load_camera_params, remplace tout le calcul R/t par :
-        c2w = np.array(cam["cam_to_world"]).reshape(4, 4, order='F')
+        c2w_unity = np.array(cam["cam_to_world"]).reshape(4, 4, order='F')
 
-        # Correction Unity LH → RH : flip Y et Z
-        c2w[1, :] *= -1
-        c2w[2, :] *= -1
-
+        S = np.diag([1, -1, 1, 1]).astype(np.float64)
+        c2w = S @ c2w_unity @ S
 
         cameras.append({
             "K": K,
             "c2w": c2w,
-            "pos": pos,  # position dans repère monde Unity
+            "pos": pos,
             "image_name": cam["image_name"],
             "depth_name": cam.get("depth_name", cam["image_name"].replace("frame_", "depth_")),
             "far_clip": cam.get("far_clip", 100.0),
@@ -43,21 +39,11 @@ def load_camera_params(json_path):
         })
     return cameras
 
-def decode_depth(depth_img, far_clip):
-    # Depth encodée en grayscale simple (R=G=B)
-    d = depth_img[:, :, 0].astype(np.float32) / 255.0
-    return d * far_clip
-
 
 def depth_to_pointcloud(depth_path, cam):
-    """
-    Rétroprojection depth map → nuage de points dans le repère caméra.
-    """
     img = cv2.imread(depth_path, cv2.IMREAD_COLOR)
     if img is None:
         return np.array([])
-
-    # OpenCV lit en BGR, on remet en RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     depth = decode_depth(img, cam["far_clip"])
 
@@ -66,12 +52,9 @@ def depth_to_pointcloud(depth_path, cam):
     cx, cy = K[0, 2], K[1, 2]
     h, w = depth.shape
 
-    # Masque : ignore fond (depth ≈ far ou ≈ 0)
     mask = (depth > cam["near_clip"] * 2) & (depth < cam["far_clip"] * 0.99)
-
     u, v = np.meshgrid(np.arange(w), np.arange(h))
 
-    # Rétroprojection : pixel (u,v) + profondeur → point 3D dans repère caméra
     X = (u - cx) * depth / fx
     Y = (v - cy) * depth / fy
     Z = depth
@@ -79,52 +62,53 @@ def depth_to_pointcloud(depth_path, cam):
     pts_cam = np.stack([X, Y, Z], axis=-1)[mask]
     return pts_cam
 
+def decode_depth(depth_img, far_clip):
+    d = depth_img[:, :, 0].astype(np.float32) / 255.0
+    return d * far_clip
+
 
 def reconstruct_from_depth(folder_path):
-    """
-    Reconstruction complète depuis les depth maps.
-    Chaque vue donne un nuage partiel → fusion dans le repère monde.
-    """
     folder = Path(folder_path)
     cameras = load_camera_params(folder / "cameras.json")
     all_points = []
-
+    
     for cam in cameras:
         depth_path = folder / cam["depth_name"]
         if not depth_path.exists():
-            print(f"  [SKIP] depth manquante : {cam['depth_name']}")
             continue
-
-        # Points dans repère caméra
+            
         pts_cam = depth_to_pointcloud(str(depth_path), cam)
         if len(pts_cam) == 0:
             continue
-
-        c2w = cam["c2w"]
-        pts_h = np.hstack([pts_cam, np.ones((len(pts_cam), 1))])
+        
+        c2w = cam["c2w"]  # (4, 4)
+        
+        # Homogène
+        ones = np.ones((len(pts_cam), 1))
+        pts_h = np.hstack([pts_cam, ones])  # (N, 4)
+        
+        # Transformation : world = c2w @ pt_cam
         pts_world = (c2w @ pts_h.T).T[:, :3]
-
         all_points.append(pts_world)
-        print(f"  {cam['image_name']} → {len(pts_world)} points")
         break
-
+    
     if not all_points:
-        print(f"ERREUR : aucun point reconstruit pour {folder_path}")
         return None
-
+        
     cloud = np.vstack(all_points)
-
-    # Filtre statistique global : retire les points aberrants
+    
+    # Centre le nuage sur l'origine
+    cloud -= cloud.mean(axis=0)
+    
+    # Filtre outliers
     dist = np.linalg.norm(cloud, axis=1)
-    mask = dist < np.percentile(dist, 98)
-    cloud = cloud[mask]
-
-    print(f"  Total : {len(cloud)} points")
+    cloud = cloud[dist < np.percentile(dist, 98)]
+    
     return cloud
 
 
+
 def save_ply(points, path):
-    """Sauvegarde nuage de points en .ply (pour debug dans MeshLab)"""
     with open(path, 'w') as f:
         f.write("ply\nformat ascii 1.0\n")
         f.write(f"element vertex {len(points)}\n")
@@ -135,7 +119,6 @@ def save_ply(points, path):
 
 
 def save_off(points, path):
-    """Sauvegarde nuage de points en .off (format ModelNet10, sans faces)"""
     with open(path, 'w') as f:
         f.write("OFF\n")
         f.write(f"{len(points)} 0 0\n")
