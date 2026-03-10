@@ -22,7 +22,10 @@ After working on 2D classification (CIFAR), I was curious about 3D classificatio
 # Install all dependencies
 uv sync
 
-# Interactive 3D mesh viewer  (N / Right = next mesh, P / Left = previous)
+# One-time dataset path fix (run once after a fresh ModelNet download)
+python -m scripts.setup_dataset
+
+# DEMO training run — quick 10-epoch training of all models on ModelNet10 with default settings
 python -m scripts.main
 
 # Train all models sequentially on ModelNet10 (default) or ModelNet40
@@ -35,6 +38,9 @@ python -m scripts.grid_training --dataset modelnet40
 
 # Inference visualiser  (interactive menu → pick checkpoint → 3D viewer with live predictions)
 python -m scripts.visualize_inference
+
+# Interactive mesh browser — browse all meshes (N / P to navigate)
+python -m scripts.mesh_browser
 
 # Single-file inference — edit MODEL_PATH and OBJECT_PATH at the top of the script
 python -m scripts.infer_single
@@ -71,9 +77,6 @@ data/ModelNet*/models/
 results/sequential/{dataset}/{timestamp}/
       sequential_results.json  +  comparison plots (.png)
 ```
-
-For the full module breakdown see [MODULES.md](MODULES.md).
-For model architecture details see [MODELS.md](MODELS.md).
 
 ---
 
@@ -138,7 +141,6 @@ All sampled point clouds are **normalised to the unit sphere** (centred at the o
 | DGCNN | Wang et al., TOG 2019 | Dynamic k-NN graph rebuilt at each layer (EdgeConv) | Uniform |
 | PointTransformer | Zhao et al., ICCV 2021 | Vector self-attention on local neighbourhoods | FPS |
 
-See [MODELS.md](MODELS.md) for architecture diagrams and simplified explanations.
 
 ---
 
@@ -214,7 +216,7 @@ To refresh or add plots without retraining, run:
 python -m scripts.rebuild_figures
 ```
 
-The script lists every `sequential_results.json` found under `results/sequential/` (newest first), lets you pick one or regenerate all, and re-runs the full `plot_sequential_results()` pipeline on the selected JSON. This is the intended workflow after editing `src/deep_learning/plotting.py`.
+The script lists every `sequential_results.json` found under `results/sequential/` (newest first), lets you pick one or regenerate all, and re-runs the full `plot_sequential_results()` pipeline on the selected JSON. This is the intended workflow after editing `src/deep_learning/plotting/`.
 
 ---
 
@@ -222,19 +224,25 @@ The script lists every `sequential_results.json` found under `results/sequential
 
 ```
 scripts/                        # Executable entry points (run with python -m scripts.<name>)
-├── main.py                     # Interactive mesh viewer
+├── main.py                     # Demo entry point — dataset fix + TensorBoard + 10-epoch training
+├── mesh_browser.py             # Interactive mesh browser (N / P to navigate)
+├── setup_dataset.py            # One-time dataset path fix
 ├── sequential_training.py      # Sequential benchmark
 ├── grid_training.py            # Ablation grid search
+├── train_best.py               # Optimised single-model training (PointTransformer)
 ├── visualize_inference.py      # Inference visualiser (Open3D)
 ├── infer_single.py             # Single-file inference (edit MODEL_PATH / OBJECT_PATH)
+├── infer_folder.py             # Batch folder inference with per-file accuracy table
 ├── view_mesh.py                # Mesh inspector with file-picker dialog
+├── compare_sampling.py         # Side-by-side sampling method comparison
 ├── rebuild_figures.py          # Regenerate plots from saved JSON
-└── README.md                   # Per-script usage reference
+├── generate_report_figures_sequential.py
+└── generate_report_figures_ablation.py
 
 src/
 ├── config.py                   # Global path constants
 ├── geometry/
-│   ├── Mesh_3D.py              # Open3D mesh wrapper + point sampling
+│   ├── mesh3d.py               # Open3D mesh wrapper + point sampling
 │   └── sampling.py             # Sampling enum (UNIFORM, FPS, POISSON)
 ├── builders/
 │   ├── mesh_3D_builder.py      # OFF file → Mesh3D
@@ -243,18 +251,19 @@ src/
 │   ├── base_modelnet_dataset.py
 │   └── point_cloud_dataset.py  # Caching + normalisation
 └── deep_learning/
-    ├── configs.py              # ModelConfig dataclass
     ├── inference.py            # Shared helpers: checkpoint loading, forward pass
-    ├── model_trainer.py        # Training loop + TensorBoard + checkpoints
-    ├── sequential_trainer.py   # run_sequential() library function
-    ├── grid_search.py          # GridSearch + GridSearchConfig
-    ├── plotting.py             # Comparison plots
-    └── models/
-        ├── SimplePointNet.py
-        ├── PointNet.py
-        ├── PointNetPP.py
-        ├── DGCNN.py
-        └── PointTransformer.py
+    ├── models/
+    │   ├── SimplePointNet.py
+    │   ├── PointNet.py
+    │   ├── PointNetPP.py
+    │   ├── DGCNN.py
+    │   └── PointTransformer.py
+    ├── training/
+    │   ├── configs.py          # ModelConfig dataclass
+    │   ├── trainer.py          # Training loop + TensorBoard + checkpoints
+    │   ├── sequential.py       # run_sequential() library function
+    │   └── grid_search.py      # GridSearch + GridSearchConfig
+    └── plotting/               # Comparison and ablation plot generators
 ```
 ---
 
